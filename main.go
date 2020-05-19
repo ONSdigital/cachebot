@@ -22,7 +22,6 @@ var _ = os.Setenv("GOFIGURE_ENV_ARRAY", "1")
 
 type config struct {
 	CloudflareToken    string   `env:"CF_TOKEN"`
-	CloudflareEmail    string   `env:"CF_EMAIL"`
 	CloudflareZone     string   `env:"CF_ZONE"`
 	SlackToken         string   `env:"SLACK_TOKEN"`
 	URLBases           []string `env:"URL_BASES"`
@@ -96,17 +95,20 @@ func cacheDeleter() {
 					err := v.do()
 					if err != nil {
 						log.Printf("cacheDeleter: Error received: %s\n", err.Error())
-						api.PostMessage(v.Channel, "<@"+v.User+"> Sorry, that didn't work...\n*Error*: "+err.Error(), slack.PostMessageParameters{AsUser: true})
+						message := "<@" + v.User + "> Sorry, that didn't work...\n*Error*: " + err.Error()
+						api.PostMessage(v.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 						continue
 					}
 					log.Println("cacheDeleter: 'do' completed without errors")
+					message := ""
 					if len(v.URIs) > 0 {
 						f := strings.Join(v.URIs, "`\n`")
 						f = "`" + f + "`"
-						api.PostMessage(v.Channel, "<@"+v.User+"> That's done, the following items have been cleared:\n"+f, slack.PostMessageParameters{AsUser: true})
+						message = "<@" + v.User + "> That's done, the following items have been cleared:\n" + f
 					} else {
-						api.PostMessage(v.Channel, "<@"+v.User+"> That's done, the entire cache has been cleared", slack.PostMessageParameters{AsUser: true})
+						message = "<@" + v.User + "> That's done, the entire cache has been cleared"
 					}
+					api.PostMessage(v.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 				}
 				clearWaiting = make([]cacheClearPending, 0)
 			}
@@ -154,13 +156,14 @@ func (c cacheClearPending) do() error {
 		return fmt.Errorf("Error preparing request for CloudFlare: %s", err)
 	}
 
-	cfR, err := http.NewRequest("DELETE", "https://api.cloudflare.com/client/v4/zones/"+cfg.CloudflareZone+"/purge_cache", bytes.NewReader(b))
+	cfR, err := http.NewRequest("POST", "https://api.cloudflare.com/client/v4/zones/"+cfg.CloudflareZone+"/purge_cache", bytes.NewReader(b))
 	if err != nil {
 		return fmt.Errorf("Error creating request for CloudFlare: %s", err)
 	}
 
-	cfR.Header.Set("X-Auth-Email", cfg.CloudflareEmail)
-	cfR.Header.Set("X-Auth-Key", cfg.CloudflareToken)
+	bearer := "Bearer " + cfg.CloudflareToken
+
+	cfR.Header.Set("Authorization", bearer)
 	cfR.Header.Set("Content-Type", "application/json")
 
 	res, err := http.DefaultClient.Do(cfR)
@@ -210,7 +213,8 @@ func slackBot() {
 	go rtm.ManageConnection()
 
 	for _, channel := range c {
-		api.PostMessage(channel.ID, "I'm ready! Say `help` for more information.", slack.PostMessageParameters{AsUser: true})
+		message := "I'm ready! Say `help` for more information."
+		api.PostMessage(channel.ID, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 		for _, r := range cfg.RestrictedChannels {
 			if channel.Name == r {
 				restrictedChannels = append(restrictedChannels, channel.ID)
@@ -263,24 +267,29 @@ Loop:
 				}
 
 				if restricted && !authorised {
-					api.PostMessage(ev.Channel, "<@"+ev.User+"> Sorry, cachebot is restricted to authorised users", slack.PostMessageParameters{AsUser: true})
+					message := "<@" + ev.User + "> Sorry, cachebot is restricted to authorised users"
+					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 					continue
 				}
 
 				switch strings.ToLower(ev.Text) {
 				case "help":
-					api.PostMessage(ev.Channel, "<@"+ev.User+"> "+helpMessage, slack.PostMessageParameters{AsUser: true})
+					message := "<@" + ev.User + "> " + helpMessage
+					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
+
 					continue
 				case "yes":
 					if _, ok := clearPending[ev.User]; ok {
-						api.PostMessage(ev.Channel, "<@"+ev.User+"> Ok, I'll let you know when it's done.", slack.PostMessageParameters{AsUser: true})
+						message := "<@" + ev.User + "> Ok, I'll let you know when it's done."
+						api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 						cacheQueue <- clearPending[ev.User]
 						delete(clearPending, ev.User)
 					}
 					continue
 				case "no":
 					if _, ok := clearPending[ev.User]; ok {
-						api.PostMessage(ev.Channel, "<@"+ev.User+"> Ok, I'll cancel that!", slack.PostMessageParameters{AsUser: true})
+						message := "<@" + ev.User + "> Ok, I'll cancel that!"
+						api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 						delete(clearPending, ev.User)
 					}
 					continue
@@ -292,7 +301,8 @@ Loop:
 					fmt.Printf("Matches: %+v\n", m)
 
 					if len(m) == 0 {
-						api.PostMessage(ev.Channel, "<@"+ev.User+"> I'm about to clear the entire cache, are you sure?\n*Warning*: This will cause a spike in traffic to the production environment!", slack.PostMessageParameters{AsUser: true})
+						message := "<@" + ev.User + "> I'm about to clear the entire cache, are you sure?\n*Warning*: This will cause a spike in traffic to the production environment!"
+						api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 						clearPending[ev.User] = cacheClearPending{Everything: true, Created: time.Now(), User: ev.User, Channel: ev.Channel}
 						continue
 					}
@@ -306,13 +316,15 @@ Loop:
 					}
 
 					if len(uris) > 30 {
-						api.PostMessage(ev.Channel, "<@"+ev.User+"> That's too much for one request - try again with less URIs", slack.PostMessageParameters{AsUser: true})
+						message := "<@" + ev.User + "> That's too much for one request - try again with less URIs"
+						api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 						continue
 					}
 
 					f := strings.Join(uris, "`\n`")
 					f = "`" + f + "`"
-					api.PostMessage(ev.Channel, "<@"+ev.User+"> I'm about to clear the following cache items, are you sure?\n"+f, slack.PostMessageParameters{AsUser: true})
+					message := "<@" + ev.User + "> I'm about to clear the following cache items, are you sure?\n" + f
+					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 					clearPending[ev.User] = cacheClearPending{Everything: true, Created: time.Now(), URIs: uris, User: ev.User, Channel: ev.Channel}
 					continue
 				}
