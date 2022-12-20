@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/ian-kent/gofigure"
-	"github.com/nlopes/slack"
+	"github.com/slack-go/slack"
 )
 
 // support , separated env vars for URL_BASES and URL_SUFFIXES
@@ -203,7 +203,7 @@ func slackBot() {
 		panic(err)
 	}
 
-	c, err := api.GetChannels(true)
+	convers, _, err := api.GetConversations(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -213,7 +213,7 @@ func slackBot() {
 	rtm := api.NewRTM()
 	go rtm.ManageConnection()
 
-	for _, channel := range c {
+	for _, channel := range convers {
 		message := "I'm ready! Say `help` for more information."
 		api.PostMessage(channel.ID, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 		for _, r := range cfg.RestrictedChannels {
