@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -28,10 +28,6 @@ type config struct {
 	URLSuffixes        []string `env:"URL_SUFFIXES"`
 	RestrictedChannels []string `env:"RESTRICTED_CHANNELS"`
 	AuthorisedUsers    []string `env:"AUTHORISED_USERS"`
-}
-
-type cacheClearInput struct {
-	URI string `json:"uri,omitempty"`
 }
 
 type cloudflareRequest struct {
@@ -58,7 +54,12 @@ type cacheClearPending struct {
 var clearPending = make(map[string]cacheClearPending)
 var clearWaiting []cacheClearPending
 
-var helpMessage = "Here's some examples of how to clear the cache:\n`clear cache`\n`clear cache for /some/uri`\n`clear cache for /some/uri and /another/uri`\nIf I ask you to confirm, reply with `yes` or `no`!"
+var helpMessage = "Here are some examples of how to clear the cache:\n" +
+	"`clear cache`\n" +
+	"`clear cache for /some/uri`\n" +
+	"`clear cache for /some/uri and /another/uri`\n" +
+	"If I ask you to confirm, reply with `yes` or `no`!"
+var re = regexp.MustCompile(`(?:https?://[^/]+)?(/[^\s>]*)`)
 
 var cacheQueue = make(chan cacheClearPending, 10)
 var wg sync.WaitGroup
@@ -153,12 +154,12 @@ func (c cacheClearPending) do() error {
 
 	b, err := json.Marshal(&cfReq)
 	if err != nil {
-		return fmt.Errorf("Error preparing request for CloudFlare: %s", err)
+		return fmt.Errorf("error preparing request for CloudFlare: %s", err)
 	}
 
 	cfR, err := http.NewRequest("POST", "https://api.cloudflare.com/client/v4/zones/"+cfg.CloudflareZone+"/purge_cache", bytes.NewReader(b))
 	if err != nil {
-		return fmt.Errorf("Error creating request for CloudFlare: %s", err)
+		return fmt.Errorf("error creating request for CloudFlare: %s", err)
 	}
 
 	bearer := "Bearer " + cfg.CloudflareToken
@@ -168,19 +169,19 @@ func (c cacheClearPending) do() error {
 
 	res, err := http.DefaultClient.Do(cfR)
 	if err != nil {
-		return fmt.Errorf("Error sending request to CloudFlare: %s", err)
+		return fmt.Errorf("error sending request to CloudFlare: %s", err)
 	}
 
 	defer res.Body.Close()
-	b, err = ioutil.ReadAll(res.Body)
+	b, err = io.ReadAll(res.Body)
 	if err != nil {
-		return fmt.Errorf("Error reading response from CloudFlare: %s", err)
+		return fmt.Errorf("error reading response from CloudFlare: %s", err)
 	}
 
 	var cfRes cloudflareResponse
 	err = json.Unmarshal(b, &cfRes)
 	if err != nil {
-		return fmt.Errorf("Error parsing response from CloudFlare: %s", err)
+		return fmt.Errorf("error parsing response from CloudFlare: %s", err)
 	}
 
 	if !cfRes.Success {
@@ -223,6 +224,9 @@ func slackBot() {
 	}
 
 	u, err := api.GetUsers()
+	if err != nil {
+		panic(err)
+	}
 	for _, user := range u {
 		for _, a := range cfg.AuthorisedUsers {
 			if user.Name == a {
@@ -232,121 +236,116 @@ func slackBot() {
 	}
 
 Loop:
-	for {
-		select {
-		case msg := <-rtm.IncomingEvents:
-			fmt.Print("Event Received: ")
-			switch ev := msg.Data.(type) {
-			case *slack.HelloEvent:
-				// Ignore hello
-			case *slack.ConnectedEvent:
-				fmt.Println("Infos:", ev.Info)
-				fmt.Println("Connection counter:", ev.ConnectionCount)
+	for msg := range rtm.IncomingEvents {
+		fmt.Print("Event Received: ")
+		switch ev := msg.Data.(type) {
+		case *slack.HelloEvent:
+			// Ignore hello
+		case *slack.ConnectedEvent:
+			fmt.Println("Infos:", ev.Info)
+			fmt.Println("Connection counter:", ev.ConnectionCount)
 
-			case *slack.MessageEvent:
-				// ignore cachebot user
-				if ev.User == botUserID {
-					continue
-				}
-
-				fmt.Printf("Message: %v\n", ev)
-
-				var restricted bool
-				for _, r := range restrictedChannels {
-					if r == ev.Channel {
-						restricted = true
-						break
-					}
-				}
-				var authorised bool
-				for _, a := range authorisedUsers {
-					if a == ev.User {
-						authorised = true
-						break
-					}
-				}
-
-				if restricted && !authorised {
-					message := "<@" + ev.User + "> Sorry, cachebot is restricted to authorised users"
-					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
-					continue
-				}
-
-				switch strings.ToLower(ev.Text) {
-				case "help":
-					message := "<@" + ev.User + "> " + helpMessage
-					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
-
-					continue
-				case "yes":
-					if _, ok := clearPending[ev.User]; ok {
-						message := "<@" + ev.User + "> Ok, I'll let you know when it's done."
-						api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
-						cacheQueue <- clearPending[ev.User]
-						delete(clearPending, ev.User)
-					}
-					continue
-				case "no":
-					if _, ok := clearPending[ev.User]; ok {
-						message := "<@" + ev.User + "> Ok, I'll cancel that!"
-						api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
-						delete(clearPending, ev.User)
-					}
-					continue
-				}
-
-				re := regexp.MustCompile("(?:https?:\\/\\/[^\\/]+)?(\\/[^\\s>]*)")
-				if strings.Contains(ev.Text, "clear cache") {
-					m := re.FindAllStringSubmatch(ev.Text, -1)
-					fmt.Printf("Matches: %+v\n", m)
-
-					if len(m) == 0 {
-						message := "<@" + ev.User + "> I'm about to clear the entire cache, are you sure?\n*Warning*: This will cause a spike in traffic to the production environment!"
-						api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
-						clearPending[ev.User] = cacheClearPending{Everything: true, Created: time.Now(), User: ev.User, Channel: ev.Channel}
-						continue
-					}
-
-					var uris []string
-					for _, match := range m {
-						if len(match) > 1 {
-							fmt.Printf("Clearing cache: %s\n", match[1])
-							uris = append(uris, filesFromURI(match[1])...)
-						}
-					}
-
-					if len(uris) > 30 {
-						message := "<@" + ev.User + "> That's too much for one request - try again with less URIs"
-						api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
-						continue
-					}
-
-					f := strings.Join(uris, "`\n`")
-					f = "`" + f + "`"
-					message := "<@" + ev.User + "> I'm about to clear the following cache items, are you sure?\n" + f
-					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
-					clearPending[ev.User] = cacheClearPending{Everything: true, Created: time.Now(), URIs: uris, User: ev.User, Channel: ev.Channel}
-					continue
-				}
-
-			case *slack.PresenceChangeEvent:
-				fmt.Printf("Presence Change: %v\n", ev)
-
-			case *slack.LatencyReport:
-				fmt.Printf("Current latency: %v\n", ev.Value)
-
-			case *slack.RTMError:
-				fmt.Printf("Error: %s\n", ev.Error())
-
-			case *slack.InvalidAuthEvent:
-				fmt.Printf("Invalid credentials")
-				break Loop
-
-			default:
-
-				// Ignore other events..
-				fmt.Printf("Unexpected: %v\n", msg.Data)
+		case *slack.MessageEvent:
+			// ignore cachebot user
+			if ev.User == botUserID {
+				continue
 			}
+
+			fmt.Printf("Message: %v\n", ev)
+
+			var restricted bool
+			for _, r := range restrictedChannels {
+				if r == ev.Channel {
+					restricted = true
+					break
+				}
+			}
+			var authorised bool
+			for _, a := range authorisedUsers {
+				if a == ev.User {
+					authorised = true
+					break
+				}
+			}
+
+			if restricted && !authorised {
+				message := "<@" + ev.User + "> Sorry, cachebot is restricted to authorised users"
+				api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
+				continue
+			}
+
+			switch strings.ToLower(ev.Text) {
+			case "help":
+				message := "<@" + ev.User + "> " + helpMessage
+				api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
+
+				continue
+			case "yes":
+				if _, ok := clearPending[ev.User]; ok {
+					message := "<@" + ev.User + "> Ok, I'll let you know when it's done."
+					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
+					cacheQueue <- clearPending[ev.User]
+					delete(clearPending, ev.User)
+				}
+				continue
+			case "no":
+				if _, ok := clearPending[ev.User]; ok {
+					message := "<@" + ev.User + "> Ok, I'll cancel that!"
+					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
+					delete(clearPending, ev.User)
+				}
+				continue
+			}
+
+			if strings.Contains(ev.Text, "clear cache") {
+				m := re.FindAllStringSubmatch(ev.Text, -1)
+				fmt.Printf("Matches: %+v\n", m)
+
+				if len(m) == 0 {
+					message := "<@" + ev.User + "> I'm about to clear the entire cache, are you sure?\n*Warning*: This will cause a spike in traffic to the production environment!"
+					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
+					clearPending[ev.User] = cacheClearPending{Everything: true, Created: time.Now(), User: ev.User, Channel: ev.Channel}
+					continue
+				}
+
+				var uris []string
+				for _, match := range m {
+					if len(match) > 1 {
+						fmt.Printf("Clearing cache: %s\n", match[1])
+						uris = append(uris, filesFromURI(match[1])...)
+					}
+				}
+
+				if len(uris) > 30 {
+					message := "<@" + ev.User + "> That's too much for one request - try again with less URIs"
+					api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
+					continue
+				}
+
+				f := strings.Join(uris, "`\n`")
+				f = "`" + f + "`"
+				message := "<@" + ev.User + "> I'm about to clear the following cache items, are you sure?\n" + f
+				api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
+				clearPending[ev.User] = cacheClearPending{Everything: true, Created: time.Now(), URIs: uris, User: ev.User, Channel: ev.Channel}
+				continue
+			}
+
+		case *slack.PresenceChangeEvent:
+			fmt.Printf("Presence Change: %v\n", ev)
+
+		case *slack.LatencyReport:
+			fmt.Printf("Current latency: %v\n", ev.Value)
+
+		case *slack.RTMError:
+			fmt.Printf("Error: %s\n", ev.Error())
+
+		case *slack.InvalidAuthEvent:
+			fmt.Printf("Invalid credentials")
+			break Loop
+
+		default:
+			// Ignore other events..
+			fmt.Printf("Unexpected: %v\n", msg.Data)
 		}
 	}
 }

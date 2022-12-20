@@ -1,11 +1,10 @@
-cachebot
-========
+# cachebot
 
 A [Slack](https://slack.com/) bot for [CloudFlare](https://www.cloudflare.com/).
 
 ![Screenshot of cachebot](screenshot.png)
 
-### Configuration
+## Configuration
 
 Configure cachebot using environment variables:
 
@@ -23,10 +22,10 @@ Configure cachebot using environment variables:
 ### Usage
 
 1. Start cachebot
-2. `/invite` cachebot to a channel
-3. Ask cachebot to clear your cache:
-  - `clear cache`
-  - `clear cache for /some/uri`
+1. `/invite` cachebot to a channel
+1. Ask cachebot to clear your cache:
+   - `clear cache`
+   - `clear cache for /some/uri`
 
 ### Authorised users / restricted channels
 
@@ -54,6 +53,6 @@ prevents deployments of apps without it.
 
 ### License
 
-Copyright ©‎ 2016, Ian Kent (http://iankent.uk).
+Copyright ©‎ 2016, Ian Kent [http://iankent.uk](http://iankent.uk).
 
 Released under MIT license, see [LICENSE](LICENSE.md) for details.
