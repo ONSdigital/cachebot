@@ -23,6 +23,7 @@ var _ = os.Setenv("GOFIGURE_ENV_ARRAY", "1")
 type config struct {
 	CloudflareToken    string   `env:"CF_TOKEN"`
 	CloudflareZone     string   `env:"CF_ZONE"`
+	MagicCommand       string   `env:"MAGIC_COMMAND"`
 	SlackToken         string   `env:"SLACK_TOKEN"`
 	URLBases           []string `env:"URL_BASES"`
 	URLSuffixes        []string `env:"URL_SUFFIXES"`
@@ -59,7 +60,9 @@ var helpMessage = "Here are some examples of how to clear the cache:\n" +
 	"`clear cache for /some/uri`\n" +
 	"`clear cache for /some/uri and /another/uri`\n" +
 	"If I ask you to confirm, reply with `yes` or `no`!"
-var re = regexp.MustCompile(`(?:https?://[^/]+)?(/[^\s>]*)`)
+
+// pasting a link comes through as `<http://...>` or     `<http://addr|text>` hence not-`[|>]`
+var re = regexp.MustCompile(`(?:https?://[^/]+)?(/[^\s|>?]*)`)
 
 var cacheQueue = make(chan cacheClearPending, 10)
 var wg sync.WaitGroup
@@ -203,7 +206,8 @@ func slackBot() {
 		panic(err)
 	}
 
-	convers, _, err := api.GetConversations(nil)
+	params := slack.GetConversationsParameters{}
+	convers, _, err := api.GetConversations(&params)
 	if err != nil {
 		panic(err)
 	}
@@ -233,6 +237,11 @@ func slackBot() {
 				authorisedUsers = append(authorisedUsers, user.ID)
 			}
 		}
+	}
+
+	magic := "clear cache"
+	if cfg.MagicCommand != "" {
+		magic = cfg.MagicCommand
 	}
 
 Loop:
@@ -297,7 +306,7 @@ Loop:
 				continue
 			}
 
-			if strings.Contains(ev.Text, "clear cache") {
+			if strings.Contains(ev.Text, magic) {
 				m := re.FindAllStringSubmatch(ev.Text, -1)
 				fmt.Printf("Matches: %+v\n", m)
 
@@ -326,7 +335,7 @@ Loop:
 				f = "`" + f + "`"
 				message := "<@" + ev.User + "> I'm about to clear the following cache items, are you sure?\n" + f
 				api.PostMessage(ev.Channel, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
-				clearPending[ev.User] = cacheClearPending{Everything: true, Created: time.Now(), URIs: uris, User: ev.User, Channel: ev.Channel}
+				clearPending[ev.User] = cacheClearPending{Everything: false, Created: time.Now(), URIs: uris, User: ev.User, Channel: ev.Channel}
 				continue
 			}
 
