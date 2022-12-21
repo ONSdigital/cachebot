@@ -205,19 +205,38 @@ func slackBot() {
 	if err != nil {
 		panic(err)
 	}
-
-	params := slack.GetConversationsParameters{}
-	convers, _, err := api.GetConversations(&params)
-	if err != nil {
-		panic(err)
-	}
-
 	botUserID = a.UserID
+
+	totalConversations := 0
+	conversations := []slack.Channel{}
+	getConversationsParams := slack.GetConversationsParameters{}
+	var batchConversations []slack.Channel
+	conversationsCursor := ""
+	for {
+		var err error
+		batchConversations, conversationsCursor, err = api.GetConversations(&getConversationsParams)
+		fmt.Printf("seen %d conversations (channels?)\n", len(batchConversations))
+		totalConversations += len(batchConversations)
+		if err != nil {
+			panic(err)
+		}
+		for _, nextConversation := range batchConversations {
+			if !nextConversation.IsChannel || !nextConversation.IsMember {
+				continue
+			}
+			conversations = append(conversations, nextConversation)
+		}
+		if conversationsCursor == "" {
+			break
+		}
+		getConversationsParams.Cursor = conversationsCursor
+	}
+	fmt.Printf("in %d/%d conversations %+v\n", len(conversations), totalConversations, conversations)
 
 	rtm := api.NewRTM()
 	go rtm.ManageConnection()
 
-	for _, channel := range convers {
+	for _, channel := range conversations {
 		message := "I'm ready! Say `help` for more information."
 		api.PostMessage(channel.ID, slack.MsgOptionText(message, false), slack.MsgOptionAsUser(true))
 		for _, r := range cfg.RestrictedChannels {
@@ -249,7 +268,9 @@ Loop:
 		fmt.Print("Event Received: ")
 		switch ev := msg.Data.(type) {
 		case *slack.HelloEvent:
-			// Ignore hello
+		case *slack.UserChangeEvent:
+			// Ignore above events
+
 		case *slack.ConnectedEvent:
 			fmt.Println("Infos:", ev.Info)
 			fmt.Println("Connection counter:", ev.ConnectionCount)

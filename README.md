@@ -14,6 +14,7 @@ Configure cachebot using environment variables:
 | CF_TOKEN             | CloudFlare API token
 | CF_EMAIL             | CloudFlare account e-mail
 | CF_ZONE              | CloudFlare Zone ID
+| MAGIC_COMMAND        | the substring trigger for URLs (default: `clear cache`)
 | RESTRICTED_CHANNELS  | Channels which require an authorised user
 | SLACK_TOKEN          | Slack API token
 | URL_BASES            | Base URL(s), comma separated
