@@ -7,7 +7,7 @@ replace golang.org/x/text => golang.org/x/text v0.5.0
 
 require (
 	github.com/ian-kent/gofigure v0.0.0-20170502192241-c9dc3a1359af
-	github.com/slack-go/slack v0.12.0
+	github.com/slack-go/slack v0.12.1
 )
 
 require (
