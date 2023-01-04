@@ -54,6 +54,7 @@ prevents deployments of apps without it.
 
 ### License
 
-Copyright ©‎ 2016, Ian Kent [http://iankent.uk](http://iankent.uk).
+- Copyright ©‎ 2016, Ian Kent [http://iankent.uk](http://iankent.uk).
+- Copyright ©‎ 2023, [ONS](https://www.ons.gov.uk)
 
 Released under MIT license, see [LICENSE](LICENSE.md) for details.
