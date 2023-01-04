@@ -23,7 +23,7 @@ var _ = os.Setenv("GOFIGURE_ENV_ARRAY", "1")
 type config struct {
 	CloudflareToken    string   `env:"CF_TOKEN"`
 	CloudflareZone     string   `env:"CF_ZONE"`
-	MagicCommand       string   `env:"MAGIC_COMMAND"`
+	TriggerPhrase      string   `env:"TRIGGER_PHRASE"`
 	SlackToken         string   `env:"SLACK_TOKEN"`
 	URLBases           []string `env:"URL_BASES"`
 	URLSuffixes        []string `env:"URL_SUFFIXES"`
@@ -258,9 +258,9 @@ func slackBot() {
 		}
 	}
 
-	magic := "clear cache"
-	if cfg.MagicCommand != "" {
-		magic = cfg.MagicCommand
+	trigger := "clear cache"
+	if cfg.TriggerPhrase != "" {
+		trigger = cfg.TriggerPhrase
 	}
 
 Loop:
@@ -327,7 +327,7 @@ Loop:
 				continue
 			}
 
-			if strings.Contains(ev.Text, magic) {
+			if strings.Contains(ev.Text, trigger) {
 				m := re.FindAllStringSubmatch(ev.Text, -1)
 				fmt.Printf("Matches: %+v\n", m)
 
