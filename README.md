@@ -1,5 +1,8 @@
 # cachebot
 
+>[!WARNING]This repository was archived in April 2025 and is no longer in development.  
+> See the new version here [dis-cachebot](https://github.com/ONSdigital/dis-cachebot)
+
 A [Slack](https://slack.com/) bot for [CloudFlare](https://www.cloudflare.com/).
 
 ![Screenshot of cachebot](screenshot.png)
@@ -8,17 +11,17 @@ A [Slack](https://slack.com/) bot for [CloudFlare](https://www.cloudflare.com/).
 
 Configure cachebot using environment variables:
 
-| Environment variable | Description
-| -------------------- | -----------
-| AUTHORISED_USERS     | Users authorised to use cachebot
-| CF_TOKEN             | CloudFlare API token
-| CF_EMAIL             | CloudFlare account e-mail
-| CF_ZONE              | CloudFlare Zone ID
-| TRIGGER_PHRASE       | the substring trigger for URLs (default: `clear cache`)
-| RESTRICTED_CHANNELS  | Channels which require an authorised user
-| SLACK_TOKEN          | Slack API token
-| URL_BASES            | Base URL(s), comma separated
-| URL_SUFFIXES         | URL suffixes, comma separated
+| Environment variable | Description                                             |
+|----------------------|---------------------------------------------------------|
+| AUTHORISED_USERS     | Users authorised to use cachebot                        |
+| CF_TOKEN             | CloudFlare API token                                    |
+| CF_EMAIL             | CloudFlare account e-mail                               |
+| CF_ZONE              | CloudFlare Zone ID                                      |
+| TRIGGER_PHRASE       | the substring trigger for URLs (default: `clear cache`) |
+| RESTRICTED_CHANNELS  | Channels which require an authorised user               |
+| SLACK_TOKEN          | Slack API token                                         |
+| URL_BASES            | Base URL(s), comma separated                            |
+| URL_SUFFIXES         | URL suffixes, comma separated                           |
 
 ### Usage
 
