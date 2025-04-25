@@ -1,7 +1,10 @@
 # cachebot
 
->[!WARNING]This repository was archived in April 2025 and is no longer in development.  
-> See the new version here [dis-cachebot](https://github.com/ONSdigital/dis-cachebot)
+---
+
+:warning: This repository was archived in April 2025 and is no longer in development. See the new version here [dis-cachebot](https://github.com/ONSdigital/dis-cachebot) :warning:
+
+---
 
 A [Slack](https://slack.com/) bot for [CloudFlare](https://www.cloudflare.com/).
 
